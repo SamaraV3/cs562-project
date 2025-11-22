@@ -1,5 +1,7 @@
 import subprocess
+import sys
 
+#first things first: I need to read in a txt file with phi operator inputs
 
 def main():
     """
@@ -7,6 +9,20 @@ def main():
     needed to run the query. That generated code should be saved to a 
     file (e.g. _generated.py) and then run.
     """
+
+    if len(sys.argv) != 2:
+        print("No filename was provided")
+        sys.exit()
+    file = sys.argv[1]
+    S, n, V, F, sig, G = 0, 0, 0, 0, 0, 0
+    with open(file, 'r') as phi_op:
+        S = phi_op.readline().strip()
+        n = phi_op.readline().strip()
+        V = phi_op.readline().strip()
+        F = phi_op.readline().strip()
+        sig = phi_op.readline().strip()
+        G = phi_op.readline().strip()
+    
 
     body = """
     for row in cur:

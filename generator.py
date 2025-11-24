@@ -5,27 +5,6 @@ import sys
 
 #cur = acc sales table btw
 
-def create_mf_struct(V, F): #V = groups (assume its an array), F = agg funcs (again assume its an array)
-    #interesting that F isnt an array of arrays tho
-    code = """
-class MFStruct:
-    def __init__(self
-"""
-#params for grouping attributes
-    params = []
-    for attr in V:
-        params.append(f"{attr}=None")
-    code += ", ".join(params) + "):\n"
-
-    #then we need 'cols' for each agg func - two for average
-    for agg_func in F:
-        if "avg" in agg_func:
-            code += f"        self.{agg_func}_count = 0\n"
-            code += f"        self.{agg_func}_sum = 0\n"
-        else:
-            code += f"        self.{agg_func} = 0\n"
-    return code + "\n"
-
 
 def main():
     """

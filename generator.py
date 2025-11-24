@@ -3,6 +3,8 @@ import sys
 
 #first things first: I need to read in a txt file with phi operator inputs
 
+#cur = acc sales table btw
+
 def create_mf_struct(V, F): #V = groups (assume its an array), F = agg funcs (again assume its an array)
     #interesting that F isnt an array of arrays tho
     code = """

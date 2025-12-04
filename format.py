@@ -266,7 +266,7 @@ class MFStruct:
             
         self.update_gv_attributes(entry, gv_num, row)
     
-    #this for grouping var attrs
+    #this for grouping var attrs - like 1.quant, 2.state, etc
     def update_gv_attributes(self, entry, gv_num, row):
         if gv_num in self.gv_select_attrs:
             for attr in self.gv_select_attrs[gv_num]:

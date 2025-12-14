@@ -5,6 +5,56 @@ import sys
 
 #cur = acc sales table btw
 
+def parse_query_file(filename):
+    with open(filename, 'r') as f:
+        content = f.read()
+    lines = content.strip().split('\n')
+    S, n, V, F, o, G = [], 0, [], [], [], ""
+    i = 0
+    while i < len(lines):
+        curr_line = lines[i].strip()
+        if curr_line.startswith("SELECT ATTRIBUTE(S):"):
+            #next line has acc attrs
+            i += 1
+            if i < len(lines):
+                S_line = lines[i].strip()
+                S = [attr.strip() for attr in S_line.split(",") if attr.strip()]
+        elif curr_line.startswith("NUMBER OF GROUPING VARIABLES(n):"):
+            #next line has n
+            i += 1
+            if i < len(lines):
+                n = int(lines[i].strip())
+        elif curr_line.startswith("GROUPING ATTRIBUTES(V):"):
+            i += 1
+            if i < len(lines):
+                V_line = lines[i].strip()
+                V = [attr.strip() for attr in V_line.split(",") if attr.strip()]
+        elif curr_line.startswith("HAVING_CONDITION(G)"):
+            i += 1
+            if i < len(lines):
+                G = lines[i].strip()
+        elif curr_line.startswith("SELECT CONDITION-VECT"):
+            #assume n is set at this point
+            for _ in range(n):
+                i += 1 #go to line of next grouping var
+                temp = []
+                if i < len(lines):
+                    new_line = lines[i].strip()
+                    temp = [attr.strip() for attr in new_line.split(",") if attr.strip()]
+                    o.append(temp)
+        elif curr_line.startswith("F-VECT([F]):"):
+            #again, assume n is set at this point
+            for _ in range(n):
+                i += 1
+                temp = []
+                if i < len(lines):
+                    new_line = lines[i].strip()
+                    temp = [attr.strip() for attr in new_line.split(",") if attr.strip()]
+                    F.append(temp)
+
+        i += 1 #
+    return S, n, V, F, o, G
+
 
 def main():
     """
@@ -13,14 +63,46 @@ def main():
     file (e.g. _generated.py) and then run.
     """
     
-
-    # Test MF Query with 2 grouping variables -> will eventually be read in
-    S = ["cust", "1_sum_quant", "2_count_prod", "2_avg_quant"]  # SELECT
-    n = 2  # 2 grouping variables
-    V = ["cust"]  # GROUP BY cust
-    F = [["1_sum_quant"], ["2_count_prod", "2_avg_quant"]]  # Aggregates for each GV
-    o = [["1.state='NY'"], ["2.state='NJ'"]]  # Conditions for each GV
-    G = "1_sum_quant > 50 and 2_count_prod > 0"  # HAVING
+    #if there is no input file then ask for input from the cmd line
+    if len(sys.argv) == 1:
+        #read in from cmd line
+        print("No input file provided. You get the honor of inputting the parameters manually")
+        print("Input grouping variable aggregates as follows: number_aggfunc_attributename [ex: 1_sum_quant]")
+        print("Input grouping variable attributes as follows: number.attributename [ex: 1.state]")
+        #gather inputs
+        S_input = input("S [format: val1, val2, ...]: ")
+        S = [attr.strip() for attr in S_input.split(",")]
+        n_input = input("N: ")
+        n = int(n_input.strip())
+        V_input = input("V [format: val1, val2, ...]: ")
+        V = [attr.strip() for attr in V_input.split(",")]
+        F_input = input("F [format: [1_agg_1, 1_agg_2], [2_agg_1, 2_agg_2], ...]: ")
+        #first split by ,
+        temp = F_input.split(",") #values still have brackets
+        #then iterate over temp to create lists of lists in F
+        F = []
+        for val in temp:
+            val = val.strip().strip('[').strip(']')
+            agg_funcs = [agg.strip() for agg in val.split(",")]
+            F.append(agg_funcs)
+        o_input = input("o [format: [1_cond_1, 1_cond_2], [2_cond_1, 2_cond_2], ...]: ")
+        temp = o_input.split(",") #values still have brackets
+        o = []
+        for val in temp:
+            val = val.strip().strip('[').strip(']')
+            conds = [cond.strip() for cond in val.split(",")]
+            o.append(conds)
+        G = input("G: ").strip()
+    elif len(sys.argv) == 2: #they gave us a file
+        S, n, V, F, o, G = parse_query_file(sys.argv[1])
+    else:
+        # Test MF Query with 2 grouping variables -> will eventually be read in
+        S = ["cust", "prod", "1_sum_quant", "2_count_prod", "2_avg_quant"]  # SELECT
+        n = 2  # 2 grouping variables
+        V = ["cust", "prod"]  # GROUP BY cust
+        F = [["1_sum_quant"], ["2_count_prod", "2_avg_quant"]]  # Aggregates for each GV
+        o = [["1.state='NY'"], ["2.state='NJ'"]]  # Conditions for each GV
+        G = "1_sum_quant > 50"  # HAVING
 
     #generates mf struct and related functions
     definitions = """
@@ -284,6 +366,7 @@ class MFStruct:
 
 """
 
+    #acc algorithm body
     body = """
     mf_struct = MFStruct(S, V, F, o)
     for sales_row in all_rows:

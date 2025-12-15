@@ -139,13 +139,20 @@ def check_condition(row, condition, grouping_var, entry=None):
 
             #APPARENTLY this is where u can check if right side references a previous GV attr for emf **tba
 
+            #pattern match to see if its depednent on an agg
+            dep_patt = r"(\d+)_(sum|avg|min|max|count)_(\w+)$"
+            is_dep = bool(re.match(dep_patt, right))
+            #if it is then get value from entry 
+            if is_dep:
+                right_ref = right
+                right = entry.get(right_ref)
+
             if left not in row:
                 return False #attribute doesnt event exist IN the row
             row_value = row[left]
 
             #handle right side - if its quoted is a string
-            if (right.startswith("'") and right.endswith("'")) or \
-            (right.startswith('"') and right.endswith('"')):
+            if type(right) is str:
                 right_value = right[1:-1] #remove quotes
                 row_str = str(row_value)
                 if op == '=':
@@ -259,6 +266,31 @@ class MFStruct:
     def __init__(self, proj_attrs, grouping_attrs, agg_func_set, pred_set):
         self.proj_attrs = proj_attrs #S
         self.grouping_attrs = grouping_attrs #V
+        #when we do generator.py im assuming this wont be created in the struct but done before passing all teh phi operators
+        #but for testing purposes needs to be here rn
+        #loop to determine if there are any grouping variable dependencies (EMF)
+        for group in pred_set:
+            for dependent in group:
+                f_vect = agg_func_set
+                #pattern to recognize if there is a dependency (gv agg is referenced)
+                #split the left and right side
+                for op in ["!=", ">=", "<=", "=", ">", "<"]:
+                    if op in dependent:
+                        left, right = dependent.split(op, 1)
+                        left = left.strip()
+                        rightd = right.strip()
+                        #print(right)
+                dep_patt = r"(\d+)_(sum|avg|min|max|count)_(\w+)$"
+                is_dep = bool(re.match(dep_patt, rightd)) 
+                #print(dependent)
+                #is EMF and needs to be added to vector F
+                if is_dep:
+                    gvn = int(right.split('_', 1)[0])
+                    #print(gvn)
+                    if rightd not in f_vect[gvn-1]:
+                        f_vect[gvn-1].append(rightd)
+                    #print(f_vect)
+            agg_func_set = f_vect
         self.all_agg_funcs = [item for sublist in agg_func_set for item in sublist] #F - list of lists
         self.pred_set = [item for sublist in pred_set for item in sublist] #o - list of lists
         self.entries = [] 
@@ -373,28 +405,28 @@ class MFStruct:
         mf_struct.populate_entries(sales_row)
 
     # to make our lives easier: will detect if query is emf off the bat
-    is_emf = False #lets assume we r in mf always for now. Edit eventually
+    # is_emf = False #lets assume we r in mf always for now. Edit eventually
 
     for grouping_var in range(1, n+1):
         conditions_list = o[grouping_var-1]
         for sales_row in all_rows:
+            #get attributes of that row to find the entry needed if emf applies
+            group_vals = {attr: sales_row[attr] for attr in mf_struct.grouping_attrs}
+            matching_entry = None
+            #print(mf_struct.entries)
+            for entry in mf_struct.entries:
+                if all(entry[attr] == group_vals[attr] for attr in mf_struct.grouping_attrs):
+                    matching_entry = entry
+                    break
             all_conditions_met = True
+            
             for condition in conditions_list:
-                if not check_condition(sales_row, condition, str(grouping_var)):
+                #add matching entry so emf can access necessary depedent aggregates
+                if not check_condition(sales_row, condition, str(grouping_var), matching_entry):
                     all_conditions_met = False
                     break
             if all_conditions_met: #then sales_row is valid
-                if is_emf:#find row in emf where its a matching group - too hard for rn
-                    pass
-                else:
-                    group_vals = {attr: sales_row[attr] for attr in mf_struct.grouping_attrs} #type: ignore
-                    matching_entry = None
-                    for entry in mf_struct.entries:
-                        if all(entry[attr] == group_vals[attr] for attr in mf_struct.grouping_attrs):
-                            matching_entry = entry
-                            break
-                    if matching_entry:
-                        mf_struct.update_aggregates(matching_entry, str(grouping_var), sales_row)
+                mf_struct.update_aggregates(matching_entry, str(grouping_var), sales_row)
 
     for entry in mf_struct.entries:
         if evaluate_having(entry, G):

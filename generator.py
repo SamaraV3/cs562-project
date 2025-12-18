@@ -305,6 +305,17 @@ class MFStruct:
                 if gv_attr not in self.gv_select_attrs[gv_num]:
                     self.gv_select_attrs[gv_num].append(gv_attr)
 
+        #and below checks for overall aggregates in SELECT
+        #if its in HAVING then PERISH
+        for attr in self.proj_attrs:
+            #j how it looks
+            overall_pattern = r'^(?!\d+_)(.+)_(sum|avg|count|max|min)_(.+)$'
+            match = re.match(overall_pattern, attr)
+            if match:
+                overall_agg = attr
+                if overall_agg not in self.all_agg_funcs:
+                    self.all_agg_funcs.append(overall_agg)
+            
 
     def populate_entries(self, row):
         group_vals = {}
@@ -323,21 +334,39 @@ class MFStruct:
         
         for agg_func in self.all_agg_funcs:
             # agg_func looks like "1_sum_quant", "2_avg_price", etc.
-            parts = agg_func.split('_')
-            agg_type = parts[1]  # sum, avg, max, min, count
-            
-            if agg_type == "sum":
-                new_entry[agg_func] = 0
-            elif agg_type == "count": 
-                new_entry[agg_func] = 0
-            elif agg_type == "avg":
-                new_entry[agg_func] = 0.0
-                new_entry[f"{agg_func}_count"] = 0  # For avg computation -> 1_sum_quant_avg
-                new_entry[f"{agg_func}_sum"] = 0    # For avg computation
-            elif agg_type == "max":
-                new_entry[agg_func] = None  # Will be set to first valid value
-            elif agg_type == "min":
-                new_entry[agg_func] = None  # Will be set to first valid value
+            # or sum_quant if we're unlucky
+            if agg_func[0].isdigit():
+                parts = agg_func.split('_')
+                agg_type = parts[1]  # sum, avg, max, min, count
+                
+                if agg_type == "sum":
+                    new_entry[agg_func] = 0
+                elif agg_type == "count": 
+                    new_entry[agg_func] = 0
+                elif agg_type == "avg":
+                    new_entry[agg_func] = 0.0
+                    new_entry[f"{agg_func}_count"] = 0  # For avg computation -> 1_sum_quant_avg
+                    new_entry[f"{agg_func}_sum"] = 0    # For avg computation
+                elif agg_type == "max":
+                    new_entry[agg_func] = None  # Will be set to first valid value
+                elif agg_type == "min":
+                    new_entry[agg_func] = None  # Will be set to first valid value
+            else:
+                parts = agg_func.split('_')
+                if len(parts) >= 3:
+                    agg_type = parts[-2] # avg in prod_avg_quant
+                    if agg_type == "sum":
+                        new_entry[agg_func] = 0
+                    elif agg_type == "count": 
+                        new_entry[agg_func] = 0
+                    elif agg_type == "avg":
+                        new_entry[agg_func] = 0.0
+                        new_entry[f"{agg_func}_count"] = 0
+                        new_entry[f"{agg_func}_sum"] = 0
+                    elif agg_type == "max":
+                        new_entry[agg_func] = None
+                    elif agg_type == "min":
+                        new_entry[agg_func] = None
         
         #below for grouping attrs
         for gv_num, attrs in self.gv_select_attrs.items():
@@ -349,7 +378,40 @@ class MFStruct:
         return new_entry
         
     def update_aggregates(self, entry, gv_num, row):
-        for agg_func in self.all_agg_funcs:#iterate over all agg_funcs
+        #first update overall aggs -> no GV condit, dif for loop
+        for agg_func in self.all_agg_funcs:
+            if not agg_func[0].isdigit():
+                parts = agg_func.split('_') #  prod_avg_quant becomes prod, avg, quant
+                if len(parts) >= 3:
+                    agg_type = parts[-2] #sum, avg, etc
+                    attr_name = parts[-1] #col name
+                    if attr_name not in row:
+                        continue
+                    if agg_type == "count" and row[attr_name] is not None:
+                        entry[agg_func] = entry.get(agg_func, 0) + 1
+                    else:
+                        try:
+                            value = float(row[attr_name])
+                        except (ValueError, TypeError):
+                            continue
+                            
+                        if agg_type == "sum":
+                            entry[agg_func] = entry.get(agg_func, 0) + value
+                        elif agg_type == "max":
+                            if agg_func not in entry or entry[agg_func] is None or value > entry[agg_func]:
+                                entry[agg_func] = value
+                        elif agg_type == "min":
+                            if agg_func not in entry or entry[agg_func] is None or value < entry[agg_func]:
+                                entry[agg_func] = value
+                        elif agg_type == "avg":
+                            count_name = f"{agg_func}_count"
+                            sum_name = f"{agg_func}_sum"
+                            entry[count_name] = entry.get(count_name, 0) + 1
+                            entry[sum_name] = entry.get(sum_name, 0) + value
+                            if entry[count_name] > 0:
+                                entry[agg_func] = entry[sum_name] / entry[count_name]
+        
+        for agg_func in self.all_agg_funcs:#iterate over all agg_funcs for gvs
             if agg_func.startswith(f"{gv_num}_"): #like 1_avg_quant, 2_count_prod, etc
                 parts = agg_func.split('_') #will get ["1", "avg", "quant"]
                 agg_type = parts[1] #"avg", "count", etc

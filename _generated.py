@@ -311,7 +311,7 @@ def query():
     cur = conn.cursor()
     cur.execute("SELECT * FROM sales")
     all_rows = cur.fetchall()
-    S, n, V, F, o, G = (['cust', '1_sum_quant', '2_sum_quant', '3_sum_quant'], 3, ['cust'], [['1_sum_quant'], ['2_sum_quant'], ['3_sum_quant', '3_avg_quant']], [["1.state='NY'"], ["2.state='NJ'", '2.quant>1_avg_quant'], ["3.state='CT'"]], '0')
+    S, n, V, F, o, G = (['state', '1_max_quant', '2_max_quant'], 2, ['state'], [['1_max_quant'], ['2_max_quant']], [["1.prod='Apple'"], ["2.prod='Ham'"]], '1_max_quant > 2_max_quant')
     final_results = []
     
     mf_struct = MFStruct(S, V, F, o)

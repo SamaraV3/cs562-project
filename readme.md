@@ -1,7 +1,39 @@
 # CS562 Project Demo
 
-This is basic demo code we wrote during lecture #2 on 3/30/23. Logic is hardcoded for a basic SQL query containing a where clause. The query is executed and the results are displayed in a table.
+This is code written by Samara Vassell and Isabella Baratta, written on top of the demo code created by nickmule77/cs562-project-demo:master.
 
-Feel free to use this as the basis for your project. You can use this code as a starting point and modify it to fit your needs.
+**Note:** Don't forget to update the values in `.env` to match your environment.
 
-**Note:** Don't forget to copy .env.example to .env and update the values to match your environment.
+## How to Run
+
+1. Download dependencies:
+   ```bash
+   pip install -r requirements.txt
+2. Run the generator
+    * On Windows/Linux
+    ```
+    python generator.py input_query_file.txt
+    ```
+    * On Mac
+    ```
+    python3 generator.py input_query_file.txt
+    ```
+
+## Input Query Format
+Create a text file with the following format
+```
+SELECT ATTRIBUTE(S):
+cust, prod, 1_sum_quant, 2_avg_quant
+NUMBER OF GROUPING VARIABLES(n):
+2
+GROUPING ATTRIBUTES(V):
+cust, prod
+F-VECT([F]):
+1_sum_quant, 1_avg_quant
+2_avg_quant
+SELECT CONDITION-VECT([σ]):
+1.state='NY'
+2.state='NJ'
+HAVING_CONDITION(G):
+1_sum_quant > 50
+```

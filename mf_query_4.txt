@@ -1,12 +1,12 @@
 SELECT ATTRIBUTE(S):
-prod, count_quant
+prod, avg_quant
 NUMBER OF GROUPING VARIABLES(n):
 0
 GROUPING ATTRIBUTES(V):
 prod
 F-VECT([F]):
-0
+
 SELECT CONDITION-VECT([σ]):
-0
+
 HAVING_CONDITION(G):
-0
+count_quant > 1000

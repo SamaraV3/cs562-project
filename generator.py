@@ -214,7 +214,6 @@ def check_condition(row, condition, grouping_var, entry=None):
 def evaluate_having(entry, having_condition):
     if not having_condition or having_condition == "0":
         return True
-    
     condition_to_eval = having_condition #the entire statement including AND and OR and NOT
     
     # repl agg funcs -> 
@@ -223,7 +222,7 @@ def evaluate_having(entry, having_condition):
             condition_to_eval = condition_to_eval.replace(key, f"entry['{key}']")
             #changes 1_sum_quant to entry[1_sum_quant]
     
-    #now replace grouping attrs
+    #now replace grouping attrs AND regular aggs
     for attr in entry.keys():
         if not attr.startswith(('1_', '2_', '3_', '4_', '5_', '6_', '7_', '8_', '9_')):
             condition_to_eval = condition_to_eval.replace(attr, f"entry['{attr}']")
@@ -234,11 +233,7 @@ def evaluate_having(entry, having_condition):
         if key.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
             condition_to_eval = condition_to_eval.replace(key, f"entry['{key}']")
             #changes 1.quant to entry[1.quant]
-    
     try:
-        #i wanna see how entry looks btw
-        #print(f"entry: {entry}")
-        #print(f"condition to eval: {condition_to_eval}")
         return eval(condition_to_eval, {"entry": entry}) #python evals entry[1.quant] > 0 and entry[2_count_prod] == 1 :3
     except:
         return False
@@ -263,7 +258,7 @@ def get_select_values(entry, select_attrs):
 
 
 class MFStruct:
-    def __init__(self, proj_attrs, grouping_attrs, agg_func_set, pred_set):
+    def __init__(self, proj_attrs, grouping_attrs, agg_func_set, pred_set, having_condition=""):
         self.proj_attrs = proj_attrs #S
         self.grouping_attrs = grouping_attrs #V
         #when we do generator.py im assuming this wont be created in the struct but done before passing all teh phi operators
@@ -315,6 +310,25 @@ class MFStruct:
                 overall_agg = attr
                 if overall_agg not in self.all_agg_funcs:
                     self.all_agg_funcs.append(overall_agg)
+        #now store having condit
+        self.having_condit = having_condition
+        #split by AND/OR
+        having_vals = re.split(r'(\bAND\b|\bOR\b)', having_condition)
+        
+        for val in having_vals: #assuming there is any lol
+            val = val.strip()
+            if any(op in val for op in ['!=', '>=', '<=', '=', '>', '<']):
+                #split again to get left and right
+                for op in ['!=', '>=', '<=', '=', '>', '<']:
+                    if op in val:
+                        left, right = val.split(op, 1)
+                        left = left.strip()
+                        right = right.strip()
+
+                        #check both for overall aggs
+                        for side in [left, right]:
+                            if re.match(r'^(sum|avg|count|max|min)_\w+$', side) and side not in self.all_agg_funcs: #format of 'count_prod', etc
+                                self.all_agg_funcs.append(side)
             
 
     def populate_entries(self, row):
@@ -462,7 +476,7 @@ class MFStruct:
 
     #acc algorithm body
     body = """
-    mf_struct = MFStruct(S, V, F, o)
+    mf_struct = MFStruct(S, V, F, o, G)
     for sales_row in all_rows:
         mf_struct.populate_entries(sales_row)
 

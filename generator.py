@@ -302,6 +302,8 @@ class MFStruct:
                     self.gv_select_attrs[gv_num] = []
                 if gv_attr not in self.gv_select_attrs[gv_num]:
                     self.gv_select_attrs[gv_num].append(gv_attr)
+        
+
 
         #and below checks for overall aggregates in SELECT
         #if its in HAVING then PERISH
@@ -317,6 +319,8 @@ class MFStruct:
         self.having_condit = having_condition
         #split by AND/OR
         having_vals = re.split(r'(\bAND\b|\bOR\b)', having_condition)
+
+
         
         for val in having_vals: #assuming there is any lol
             val = val.strip()
@@ -333,8 +337,8 @@ class MFStruct:
                             if re.match(r'^(sum|avg|count|max|min)_\w+$', side) and side not in self.all_agg_funcs: #format of 'count_prod', etc
                                 self.all_agg_funcs.append(side)
                                 
-            #overall agg dependency not already in select or having
-            for group in pred_set:
+        
+        for group in pred_set:
             for dependent in group:
                 #pattern to recognize if there is a dependency (gv agg is referenced)
                 #split the left and right side
@@ -351,6 +355,7 @@ class MFStruct:
                 if is_dep:
                     if rightd not in self.all_agg_funcs:
                         self.all_agg_funcs.insert(0,rightd)
+           
             
 
     def populate_entries(self, row):
@@ -586,7 +591,7 @@ if "__main__" == __name__:
     # Write the generated code to a file
     open("_generated.py", "w").write(tmp)
     # Execute the generated code
-    subprocess.run(["python", "_generated.py"])
+    subprocess.run(["python3", "_generated.py"])
 
 
 if "__main__" == __name__:

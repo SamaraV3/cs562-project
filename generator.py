@@ -332,6 +332,25 @@ class MFStruct:
                         for side in [left, right]:
                             if re.match(r'^(sum|avg|count|max|min)_\w+$', side) and side not in self.all_agg_funcs: #format of 'count_prod', etc
                                 self.all_agg_funcs.append(side)
+                                
+            #overall agg dependency not already in select or having
+            for group in pred_set:
+            for dependent in group:
+                #pattern to recognize if there is a dependency (gv agg is referenced)
+                #split the left and right side
+                for op in ["!=", ">=", "<=", "=", ">", "<"]:
+                    if op in dependent:
+                        left, right = dependent.split(op, 1)
+                        left = left.strip()
+                        rightd = right.strip()
+                        #print(right)
+                overall_pattern = r'^(sum|avg|count|max|min)_(.+)$' 
+                is_dep = bool(re.match(overall_pattern, rightd)) 
+                #print(dependent)
+                #is EMF and needs to be added to vector F
+                if is_dep:
+                    if rightd not in self.all_agg_funcs:
+                        self.all_agg_funcs.insert(0,rightd)
             
 
     def populate_entries(self, row):

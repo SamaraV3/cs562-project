@@ -309,7 +309,7 @@ class MFStruct:
         #if its in HAVING then PERISH
         for attr in self.proj_attrs:
             #j how it looks
-            overall_pattern = r'^(?!\d+_)(.+)_(sum|avg|count|max|min)_(.+)$'
+            overall_pattern = r'^(?!\d+_)(sum|avg|count|max|min)_(.+)$'  # count_quant
             match = re.match(overall_pattern, attr)
             if match:
                 overall_agg = attr
@@ -353,8 +353,8 @@ class MFStruct:
                     new_entry[agg_func] = None  # Will be set to first valid value
             else:
                 parts = agg_func.split('_')
-                if len(parts) >= 3:
-                    agg_type = parts[-2] # avg in prod_avg_quant
+                if len(parts) == 2: #again count_quant, avg_quant, etc
+                    agg_type = parts[0].strip() # avg in avg_quant
                     if agg_type == "sum":
                         new_entry[agg_func] = 0
                     elif agg_type == "count": 
@@ -380,11 +380,11 @@ class MFStruct:
     def update_aggregates(self, entry, gv_num, row):
         #first update overall aggs -> no GV condit, dif for loop
         for agg_func in self.all_agg_funcs:
-            if not agg_func[0].isdigit():
-                parts = agg_func.split('_') #  prod_avg_quant becomes prod, avg, quant
-                if len(parts) >= 3:
-                    agg_type = parts[-2] #sum, avg, etc
-                    attr_name = parts[-1] #col name
+            if not agg_func[0].isdigit() and gv_num=="0": #because i used 0 as a placeholder lol
+                parts = agg_func.split('_') #  avg_quant becomes avg, quant
+                if len(parts) == 2:
+                    agg_type = parts[0] #sum, avg, etc
+                    attr_name = parts[1] #col name
                     if attr_name not in row:
                         continue
                     if agg_type == "count" and row[attr_name] is not None:
@@ -468,6 +468,19 @@ class MFStruct:
 
     # to make our lives easier: will detect if query is emf off the bat
     # is_emf = False #lets assume we r in mf always for now. Edit eventually
+
+    #also need to do 1 loop j for regular aggs
+    for sales_row in all_rows:
+        group_vals = {attr: sales_row[attr] for attr in mf_struct.grouping_attrs}
+        matching_entry = None
+        for entry in mf_struct.entries:
+            if all(entry[attr] == group_vals[attr] for attr in mf_struct.grouping_attrs):
+                matching_entry = entry
+                break
+        
+        if matching_entry:
+            #update overall aggs using gv number 0 lol
+            mf_struct.update_aggregates(matching_entry, "0", sales_row)
 
     for grouping_var in range(1, n+1):
         conditions_list = o[grouping_var-1]

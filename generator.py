@@ -138,14 +138,17 @@ def check_condition(row, condition, grouping_var, entry=None):
             right = right.strip()
 
             #APPARENTLY this is where u can check if right side references a previous GV attr for emf **tba
-
-            #pattern match to see if its depednent on an agg
+            #pattern match for overall agg
+            overall_pattern = r'^(sum|avg|count|max|min)_(\w+)$'
+            all_dep = bool(re.match(overall_pattern, right))
+            #pattern match to see if its dependent on an agg
             dep_patt = r"(\d+)_(sum|avg|min|max|count)_(\w+)$"
             is_dep = bool(re.match(dep_patt, right))
             #if it is then get value from entry 
-            if is_dep:
+            if is_dep or all_dep:
                 right_ref = right
                 right = entry.get(right_ref)
+                #print(right)
 
             if left not in row:
                 return False #attribute doesnt event exist IN the row

@@ -138,16 +138,17 @@ def check_condition(row, condition, grouping_var, entry=None):
             right = right.strip()
 
             #APPARENTLY this is where u can check if right side references a previous GV attr for emf **tba
-            #check for overall whole aggregate dependencies
+
             overall_pattern = r'^(sum|avg|count|max|min)_(\w+)$'
             all_dep = bool(re.match(overall_pattern, right))
-            #pattern match to see if its depednent on an agg
+            #pattern match to see if its dependent on an agg
             dep_patt = r"(\d+)_(sum|avg|min|max|count)_(\w+)$"
             is_dep = bool(re.match(dep_patt, right))
             #if it is then get value from entry 
             if is_dep or all_dep:
                 right_ref = right
                 right = entry.get(right_ref)
+                #print(right)
 
             if left not in row:
                 return False #attribute doesnt event exist IN the row
@@ -216,7 +217,6 @@ def check_condition(row, condition, grouping_var, entry=None):
 def evaluate_having(entry, having_condition):
     if not having_condition or having_condition == "0":
         return True
-    
     condition_to_eval = having_condition #the entire statement including AND and OR and NOT
     
     # repl agg funcs -> 
@@ -224,9 +224,8 @@ def evaluate_having(entry, having_condition):
         if key.startswith(('1_', '2_', '3_', '4_', '5_', '6_', '7_', '8_', '9_')) and '_' in key[2:]:
             condition_to_eval = condition_to_eval.replace(key, f"entry['{key}']")
             #changes 1_sum_quant to entry[1_sum_quant]
-
     
-    #now replace grouping attrs
+    #now replace grouping attrs AND regular aggs
     for attr in entry.keys():
         if not attr.startswith(('1_', '2_', '3_', '4_', '5_', '6_', '7_', '8_', '9_')):
             condition_to_eval = condition_to_eval.replace(attr, f"entry['{attr}']")
@@ -237,11 +236,7 @@ def evaluate_having(entry, having_condition):
         if key.startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
             condition_to_eval = condition_to_eval.replace(key, f"entry['{key}']")
             #changes 1.quant to entry[1.quant]
-    
     try:
-        #i wanna see how entry looks btw
-        #print(f"entry: {entry}")
-        #print(f"condition to eval: {condition_to_eval}")
         return eval(condition_to_eval, {"entry": entry}) #python evals entry[1.quant] > 0 and entry[2_count_prod] == 1 :3
     except:
         return False
@@ -266,7 +261,7 @@ def get_select_values(entry, select_attrs):
 
 
 class MFStruct:
-    def __init__(self, proj_attrs, grouping_attrs, agg_func_set, pred_set):
+    def __init__(self, proj_attrs, grouping_attrs, agg_func_set, pred_set, having_condition=""):
         self.proj_attrs = proj_attrs #S
         self.grouping_attrs = grouping_attrs #V
         #when we do generator.py im assuming this wont be created in the struct but done before passing all teh phi operators
@@ -312,13 +307,31 @@ class MFStruct:
         #if its in HAVING then PERISH
         for attr in self.proj_attrs:
             #j how it looks
-            overall_pattern = r'^(sum|avg|count|max|min)_(\w+)$'
+            overall_pattern = r'^(?!\d+_)(sum|avg|count|max|min)_(.+)$'  # count_quant
             match = re.match(overall_pattern, attr)
             if match:
                 overall_agg = attr
                 if overall_agg not in self.all_agg_funcs:
-                    #front of list so if accessed by gv its already calculated
-                    self.all_agg_funcs.insert(0, overall_agg)
+                    self.all_agg_funcs.append(overall_agg)
+        #now store having condit
+        self.having_condit = having_condition
+        #split by AND/OR
+        having_vals = re.split(r'(\bAND\b|\bOR\b)', having_condition)
+        
+        for val in having_vals: #assuming there is any lol
+            val = val.strip()
+            if any(op in val for op in ['!=', '>=', '<=', '=', '>', '<']):
+                #split again to get left and right
+                for op in ['!=', '>=', '<=', '=', '>', '<']:
+                    if op in val:
+                        left, right = val.split(op, 1)
+                        left = left.strip()
+                        right = right.strip()
+
+                        #check both for overall aggs
+                        for side in [left, right]:
+                            if re.match(r'^(sum|avg|count|max|min)_\w+$', side) and side not in self.all_agg_funcs: #format of 'count_prod', etc
+                                self.all_agg_funcs.append(side)
             
 
     def populate_entries(self, row):
@@ -357,27 +370,20 @@ class MFStruct:
                     new_entry[agg_func] = None  # Will be set to first valid value
             else:
                 parts = agg_func.split('_')
-                if len(parts) == 2:
-                    agg_type = parts[0]
-                    attr_name = parts[1]
-                elif len(parts) >= 3:
-                    agg_type = parts[-2] # avg in prod_avg_quant
-                    attr_name = parts[-1]
-                else:
-                    continue
-                
-                if agg_type == "sum":
-                    new_entry[agg_func] = 0
-                elif agg_type == "count": 
-                     new_entry[agg_func] = 0
-                elif agg_type == "avg":
-                    new_entry[agg_func] = 0.0
-                    new_entry[f"{agg_func}_count"] = 0
-                    new_entry[f"{agg_func}_sum"] = 0
-                elif agg_type == "max":
-                    new_entry[agg_func] = None
-                elif agg_type == "min":
-                    new_entry[agg_func] = None
+                if len(parts) == 2: #again count_quant, avg_quant, etc
+                    agg_type = parts[0].strip() # avg in avg_quant
+                    if agg_type == "sum":
+                        new_entry[agg_func] = 0
+                    elif agg_type == "count": 
+                        new_entry[agg_func] = 0
+                    elif agg_type == "avg":
+                        new_entry[agg_func] = 0.0
+                        new_entry[f"{agg_func}_count"] = 0
+                        new_entry[f"{agg_func}_sum"] = 0
+                    elif agg_type == "max":
+                        new_entry[agg_func] = None
+                    elif agg_type == "min":
+                        new_entry[agg_func] = None
         
         #below for grouping attrs
         for gv_num, attrs in self.gv_select_attrs.items():
@@ -391,42 +397,36 @@ class MFStruct:
     def update_aggregates(self, entry, gv_num, row):
         #first update overall aggs -> no GV condit, dif for loop
         for agg_func in self.all_agg_funcs:
-            if not agg_func[0].isdigit():
-                parts = agg_func.split('_') #  prod_avg_quant becomes prod, avg, quant
-                if len(parts) >= 3:
-                    agg_type = parts[-2] #sum, avg, etc
-                    attr_name = parts[-1] #col name
-                elif len(parts) == 2:
-                    agg_type = parts[0]
-                    attr_name = parts[1]
-                else:
-                    continue
-                    
-                if attr_name not in row:
-                    continue
-                if agg_type == "count" and row[attr_name] is not None:
-                    entry[agg_func] = entry.get(agg_func, 0) + 1
-                else:
-                    try:
-                        value = float(row[attr_name])
-                    except (ValueError, TypeError):
+            if not agg_func[0].isdigit() and gv_num=="0": #because i used 0 as a placeholder lol
+                parts = agg_func.split('_') #  avg_quant becomes avg, quant
+                if len(parts) == 2:
+                    agg_type = parts[0] #sum, avg, etc
+                    attr_name = parts[1] #col name
+                    if attr_name not in row:
                         continue
+                    if agg_type == "count" and row[attr_name] is not None:
+                        entry[agg_func] = entry.get(agg_func, 0) + 1
+                    else:
+                        try:
+                            value = float(row[attr_name])
+                        except (ValueError, TypeError):
+                            continue
                             
-                    if agg_type == "sum":
-                        entry[agg_func] = entry.get(agg_func, 0) + value
-                    elif agg_type == "max":
-                        if agg_func not in entry or entry[agg_func] is None or value > entry[agg_func]:
-                             entry[agg_func] = value
-                    elif agg_type == "min":
-                        if agg_func not in entry or entry[agg_func] is None or value < entry[agg_func]:
-                            entry[agg_func] = value
-                    elif agg_type == "avg":
-                        count_name = f"{agg_func}_count"
-                        sum_name = f"{agg_func}_sum"
-                        entry[count_name] = entry.get(count_name, 0) + 1
-                        entry[sum_name] = entry.get(sum_name, 0) + value
-                        if entry[count_name] > 0:
-                            entry[agg_func] = entry[sum_name] / entry[count_name]
+                        if agg_type == "sum":
+                            entry[agg_func] = entry.get(agg_func, 0) + value
+                        elif agg_type == "max":
+                            if agg_func not in entry or entry[agg_func] is None or value > entry[agg_func]:
+                                entry[agg_func] = value
+                        elif agg_type == "min":
+                            if agg_func not in entry or entry[agg_func] is None or value < entry[agg_func]:
+                                entry[agg_func] = value
+                        elif agg_type == "avg":
+                            count_name = f"{agg_func}_count"
+                            sum_name = f"{agg_func}_sum"
+                            entry[count_name] = entry.get(count_name, 0) + 1
+                            entry[sum_name] = entry.get(sum_name, 0) + value
+                            if entry[count_name] > 0:
+                                entry[agg_func] = entry[sum_name] / entry[count_name]
         
         for agg_func in self.all_agg_funcs:#iterate over all agg_funcs for gvs
             if agg_func.startswith(f"{gv_num}_"): #like 1_avg_quant, 2_count_prod, etc
@@ -479,12 +479,25 @@ class MFStruct:
 
     #acc algorithm body
     body = """
-    mf_struct = MFStruct(S, V, F, o)
+    mf_struct = MFStruct(S, V, F, o, G)
     for sales_row in all_rows:
         mf_struct.populate_entries(sales_row)
 
     # to make our lives easier: will detect if query is emf off the bat
     # is_emf = False #lets assume we r in mf always for now. Edit eventually
+
+    #also need to do 1 loop j for regular aggs
+    for sales_row in all_rows:
+        group_vals = {attr: sales_row[attr] for attr in mf_struct.grouping_attrs}
+        matching_entry = None
+        for entry in mf_struct.entries:
+            if all(entry[attr] == group_vals[attr] for attr in mf_struct.grouping_attrs):
+                matching_entry = entry
+                break
+        
+        if matching_entry:
+            #update overall aggs using gv number 0 lol
+            mf_struct.update_aggregates(matching_entry, "0", sales_row)
 
     for grouping_var in range(1, n+1):
         conditions_list = o[grouping_var-1]
